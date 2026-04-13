@@ -1,0 +1,8 @@
+.gitignore
+SimSearch/
+clip-vit-base-patch32-ir/
+images/
+venv/
+__pycache__/
+.env
+.env.example
