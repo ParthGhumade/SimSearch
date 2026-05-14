@@ -3,6 +3,8 @@ SimSearch/
 clip-vit-base-patch32-ir/
 images/
 venv/
+model_cache
+New folder
 __pycache__/
 .env
 .env.example
