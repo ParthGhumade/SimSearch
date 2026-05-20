@@ -1,17 +1,51 @@
 # SimSearch
 
-A new Flutter project.
+Semantic image search: index local photos with CLIP + FAISS, search by text description, browse results in a Flutter UI.
 
-## Getting Started
+## Quick start
 
-This project is a starting point for a Flutter application.
+### 1. Backend (Python)
 
-A few resources to get you started if this is your first Flutter project:
+```powershell
+cd app
+pip install faiss-cpu torch transformers pillow fastapi uvicorn
+```
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+Configure folders in `app/config.json`, then build the index:
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+```powershell
+python index.py
+```
+
+Start the API server (required for the UI):
+
+```powershell
+python api.py
+```
+
+Or from the repo root: `scripts\start_backend.bat`
+
+API runs at **http://127.0.0.1:8000**
+
+- `GET /health` — index status
+- `POST /search` — body: `{"query": "kitchen interior"}`
+
+If anything breaks: `python clear_db.py` then `python index.py`
+
+### 2. Frontend (Flutter)
+
+```powershell
+cd frontend\v1
+flutter pub get
+flutter run -d windows
+```
+
+Ensure the backend is running before searching.
+
+## Architecture
+
+```
+images/ + test_media/  →  index.py  →  FAISS + SQLite
+                              ↑
+User query  →  Flutter UI  →  api.py  →  search.py (CLIP)  →  paths + scores
+```

@@ -1,56 +1,33 @@
 import 'package:flutter/material.dart';
 import 'theme.dart';
 import 'sidebar.dart';
+import 'settings_screen.dart';
 import 'widgets.dart';
+import 'services/api_service.dart';
 
-final _mockResults = [
-  SearchResult(
-    name: 'Misty Alpine Lake',
-    path: '',
-    score: 0.98,
-    imageUrl: 'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&q=80&w=800',
-    tags: ['Nature', 'Mountains', 'Lake'],
-  ),
-  SearchResult(
-    name: 'Rolling Green Hills',
-    path: '',
-    score: 0.95,
-    imageUrl: 'https://images.unsplash.com/photo-1500382017468-9049fed747ef?auto=format&fit=crop&q=80&w=800',
-    tags: ['Landscape', 'Summer', 'Fields'],
-  ),
-  SearchResult(
-    name: 'Desert Sunset Dunes',
-    path: '',
-    score: 0.92,
-    imageUrl: 'https://images.unsplash.com/photo-1473580044384-7ba9967e16a0?auto=format&fit=crop&q=80&w=800',
-    tags: ['Desert', 'Sunset', 'Nature'],
-  ),
-  SearchResult(
-    name: 'Forest Stream Flow',
-    path: '',
-    score: 0.89,
-    imageUrl: 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&q=80&w=800',
-    tags: ['Forest', 'Water', 'Peaceful'],
-  ),
-  SearchResult(
-    name: 'Snowy Peak Vista',
-    path: '',
-    score: 0.86,
-    imageUrl: 'https://images.unsplash.com/photo-1483921020237-2ff51e8e4b22?auto=format&fit=crop&q=80&w=800',
-    tags: ['Winter', 'Snow', 'Mountains'],
-  ),
-  SearchResult(
-    name: 'Coastal Cliff Edge',
-    path: '',
-    score: 0.83,
-    imageUrl: 'https://images.unsplash.com/photo-1505228395891-9a51e7e86bf6?auto=format&fit=crop&q=80&w=800',
-    tags: ['Ocean', 'Cliff', 'Travel'],
-  ),
-];
-
-class ResultsScreen extends StatelessWidget {
+class ResultsScreen extends StatefulWidget {
   final String query;
   const ResultsScreen({super.key, required this.query});
+
+  @override
+  State<ResultsScreen> createState() => _ResultsScreenState();
+}
+
+class _ResultsScreenState extends State<ResultsScreen> {
+  final ApiService _api = ApiService();
+  late Future<SearchResponse> _searchFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _searchFuture = _api.search(widget.query);
+  }
+
+  void _retry() {
+    setState(() {
+      _searchFuture = _api.search(widget.query);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -59,18 +36,26 @@ class ResultsScreen extends StatelessWidget {
       body: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const AppSidebar(showUserAccount: true),
+          AppSidebar(
+            showUserAccount: true,
+            activePage: 'search',
+            onNavigate: (page) {
+              if (page == 'settings') {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                );
+              }
+            },
+          ),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // Page header
                 Padding(
                   padding: const EdgeInsets.fromLTRB(28, 28, 28, 0),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Back button
                       Padding(
                         padding: const EdgeInsets.only(right: 16, top: 2),
                         child: IconButton(
@@ -90,27 +75,21 @@ class ResultsScreen extends StatelessWidget {
                             Text('Image Search Results',
                                 style: AppTheme.outfit(28, FontWeight.w700, AppTheme.textPrimary)),
                             const SizedBox(height: 4),
-                            Text('Showing 24 results for "$query"',
-                                style: AppTheme.inter(13, FontWeight.w400, AppTheme.textSecondary)),
+                            FutureBuilder<SearchResponse>(
+                              future: _searchFuture,
+                              builder: (context, snapshot) {
+                                if (!snapshot.hasData) {
+                                  return Text('Searching for "${widget.query}"...',
+                                      style: AppTheme.inter(13, FontWeight.w400, AppTheme.textSecondary));
+                                }
+                                return Text(
+                                  'Showing ${snapshot.data!.results.length} results for "${widget.query}"',
+                                  style: AppTheme.inter(13, FontWeight.w400, AppTheme.textSecondary),
+                                );
+                              },
+                            ),
                           ],
                         ),
-                      ),
-                      // Filter chips
-                      Row(
-                        children: ['All Formats', 'Photography', 'Vectors'].map((f) {
-                          return Padding(
-                            padding: const EdgeInsets.only(left: 8),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                              decoration: BoxDecoration(
-                                color: AppTheme.white,
-                                borderRadius: BorderRadius.circular(20),
-                                border: Border.all(color: AppTheme.border),
-                              ),
-                              child: Text(f, style: AppTheme.inter(13, FontWeight.w400, AppTheme.textPrimary)),
-                            ),
-                          );
-                        }).toList(),
                       ),
                     ],
                   ),
@@ -118,14 +97,68 @@ class ResultsScreen extends StatelessWidget {
                 const SizedBox(height: 20),
                 const Divider(height: 1, color: AppTheme.border),
                 const SizedBox(height: 20),
-                // Grid
                 Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(28, 0, 28, 28),
-                    child: Column(
-                      children: [
-                        // 3-column equal grid
-                        GridView.builder(
+                  child: FutureBuilder<SearchResponse>(
+                    future: _searchFuture,
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              CircularProgressIndicator(color: AppTheme.activeBlue),
+                              SizedBox(height: 16),
+                              Text('Searching your image library...'),
+                            ],
+                          ),
+                        );
+                      }
+
+                      if (snapshot.hasError) {
+                        final err = snapshot.error;
+                        final message = err is ApiException
+                            ? err.message
+                            : 'Could not reach the backend. Start it with: python api.py';
+                        return Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(32),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.cloud_off_outlined, size: 48, color: AppTheme.textHint),
+                                const SizedBox(height: 16),
+                                Text('Search unavailable',
+                                    style: AppTheme.outfit(18, FontWeight.w600, AppTheme.textPrimary)),
+                                const SizedBox(height: 8),
+                                Text(message,
+                                    textAlign: TextAlign.center,
+                                    style: AppTheme.inter(14, FontWeight.w400, AppTheme.textSecondary)),
+                                const SizedBox(height: 20),
+                                ElevatedButton(
+                                  onPressed: _retry,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: AppTheme.activeBlue,
+                                    foregroundColor: AppTheme.white,
+                                  ),
+                                  child: const Text('Retry'),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }
+
+                      final results = snapshot.data!.results;
+                      if (results.isEmpty) {
+                        return Center(
+                          child: Text('No results found for "${widget.query}"',
+                              style: AppTheme.inter(14, FontWeight.w400, AppTheme.textSecondary)),
+                        );
+                      }
+
+                      return SingleChildScrollView(
+                        padding: const EdgeInsets.fromLTRB(28, 0, 28, 28),
+                        child: GridView.builder(
                           shrinkWrap: true,
                           physics: const NeverScrollableScrollPhysics(),
                           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -134,25 +167,11 @@ class ResultsScreen extends StatelessWidget {
                             crossAxisSpacing: 14,
                             childAspectRatio: 1.0,
                           ),
-                          itemCount: _mockResults.length,
-                          itemBuilder: (ctx, i) => _GridImageCard(item: _mockResults[i]),
+                          itemCount: results.length,
+                          itemBuilder: (ctx, i) => _GridImageCard(item: results[i]),
                         ),
-                        const SizedBox(height: 36),
-                        // Load more button
-                        OutlinedButton(
-                          onPressed: () {},
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                            side: const BorderSide(color: AppTheme.border),
-                            foregroundColor: AppTheme.textPrimary,
-                          ),
-                          child: Text('Load More Results',
-                              style: AppTheme.inter(14, FontWeight.w400, AppTheme.textPrimary)),
-                        ),
-                        const SizedBox(height: 24),
-                      ],
-                    ),
+                      );
+                    },
                   ),
                 ),
               ],
@@ -164,60 +183,12 @@ class ResultsScreen extends StatelessWidget {
   }
 }
 
-class _GridImageCard extends StatefulWidget {
+class _GridImageCard extends StatelessWidget {
   final SearchResult item;
   const _GridImageCard({required this.item});
 
   @override
-  State<_GridImageCard> createState() => _GridImageCardState();
-}
-
-class _GridImageCardState extends State<_GridImageCard> {
-  bool _hovered = false;
-
-  @override
   Widget build(BuildContext context) {
-    return MouseRegion(
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        decoration: BoxDecoration(
-          color: AppTheme.imagePlaceholder,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: _hovered ? AppTheme.activeBlue : AppTheme.border),
-          boxShadow: _hovered
-              ? [BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 12, offset: const Offset(0, 4))]
-              : [],
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            if (widget.item.imageUrl != null)
-              Image.network(widget.item.imageUrl!, fit: BoxFit.cover)
-            else
-              Container(color: AppTheme.imagePlaceholder),
-            if (_hovered)
-              Container(
-                color: Colors.white.withValues(alpha: 0.8),
-                child: Center(
-                  child: ElevatedButton(
-                    onPressed: () {},
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.activeBlue,
-                      foregroundColor: AppTheme.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                      elevation: 0,
-                    ),
-                    child: Text('View Details', style: AppTheme.inter(13, FontWeight.w600, AppTheme.white)),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
+    return ImageCard(item: item, onTap: () {});
   }
 }

@@ -1,61 +1,9 @@
 import 'package:flutter/material.dart';
 import 'theme.dart';
 import 'sidebar.dart';
-import 'widgets.dart';
 import 'results_screen.dart';
-
-// Mock results for UI demo
-final _mockResults = [
-  SearchResult(
-    name: 'Modern Minimalist Living',
-    path: '',
-    score: 0.99,
-    imageUrl: 'https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?q=80&w=1000',
-    assetId: 'ASSET-7721-A',
-    resolution: '5120 × 2880',
-    tags: ['Interior', 'Modern', 'Living Room', 'High-Key'],
-  ),
-  SearchResult(
-    name: 'Abstract Marble Kitchen',
-    path: '',
-    score: 0.94,
-    imageUrl: 'https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?q=80&w=1000',
-    assetId: 'ASSET-8812-B',
-    tags: ['Kitchen', 'Marble', 'Luxury', 'Clean'],
-  ),
-  SearchResult(
-    name: 'Contemporary Lounge',
-    path: '',
-    score: 0.91,
-    imageUrl: 'https://images.unsplash.com/photo-1493663284031-b7e3aefcae8e?q=80&w=1000',
-    assetId: 'ASSET-9010-C',
-    tags: ['Furniture', 'Sofa', 'Minimalist'],
-  ),
-  SearchResult(
-    name: 'Architectural Staircase',
-    path: '',
-    score: 0.88,
-    imageUrl: 'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?q=80&w=1000',
-    assetId: 'ASSET-4423-D',
-    tags: ['Architecture', 'Wood', 'Geometric'],
-  ),
-  SearchResult(
-    name: 'Office Workspace',
-    path: '',
-    score: 0.85,
-    imageUrl: 'https://images.unsplash.com/photo-1497215728101-856f4ea42174?q=80&w=1000',
-    assetId: 'ASSET-2231-E',
-    tags: ['Office', 'Workspace', 'Bright'],
-  ),
-  SearchResult(
-    name: 'Light Study Corner',
-    path: '',
-    score: 0.82,
-    imageUrl: 'https://images.unsplash.com/photo-1519710164239-da123dc03ef4?q=80&w=1000',
-    assetId: 'ASSET-1109-F',
-    tags: ['Reading', 'Interior', 'Soft Lighting'],
-  ),
-];
+import 'settings_screen.dart';
+import 'services/api_service.dart';
 
 class DiscoveryScreen extends StatefulWidget {
   const DiscoveryScreen({super.key});
@@ -65,14 +13,45 @@ class DiscoveryScreen extends StatefulWidget {
 
 class _DiscoveryScreenState extends State<DiscoveryScreen> {
   final TextEditingController _ctrl = TextEditingController();
-  SearchResult? _selected;
-  final List<SearchResult> _results = _mockResults;
+  final ApiService _api = ApiService();
+  bool _searching = false;
+  String? _backendMessage;
 
-  void _doSearch(String q) {
-    if (q.trim().isEmpty) return;
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => ResultsScreen(query: q)),
-    );
+  @override
+  void initState() {
+    super.initState();
+    _checkBackend();
+  }
+
+  Future<void> _checkBackend() async {
+    try {
+      final health = await _api.health();
+      if (!mounted) return;
+      setState(() {
+        _backendMessage = health.isReady
+            ? '${health.indexedCount} images indexed'
+            : 'Backend running but index empty — run python index.py';
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _backendMessage = 'Backend offline — start with: python api.py';
+      });
+    }
+  }
+
+  Future<void> _doSearch(String q) async {
+    final query = q.trim();
+    if (query.isEmpty || _searching) return;
+
+    setState(() => _searching = true);
+    try {
+      await Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => ResultsScreen(query: query)),
+      );
+    } finally {
+      if (mounted) setState(() => _searching = false);
+    }
   }
 
   @override
@@ -81,18 +60,25 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
       backgroundColor: AppTheme.bg,
       body: Column(
         children: [
-          // Top bar
-          _TopBar(),
+          _TopBar(backendMessage: _backendMessage),
           Expanded(
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const AppSidebar(),
+                AppSidebar(
+                  activePage: 'search',
+                  onNavigate: (page) {
+                    if (page == 'settings') {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                      );
+                    }
+                  },
+                ),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // Search hero
                       Container(
                         color: AppTheme.white,
                         padding: const EdgeInsets.fromLTRB(40, 40, 40, 32),
@@ -102,7 +88,6 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
                                 style: AppTheme.outfit(42, FontWeight.w700, AppTheme.textPrimary,
                                     letterSpacing: -0.5)),
                             const SizedBox(height: 28),
-                            // Search bar
                             ConstrainedBox(
                               constraints: const BoxConstraints(maxWidth: 640),
                               child: Container(
@@ -126,10 +111,11 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
                                     Expanded(
                                       child: TextField(
                                         controller: _ctrl,
+                                        enabled: !_searching,
                                         onSubmitted: _doSearch,
                                         style: AppTheme.inter(15, FontWeight.w400, AppTheme.textPrimary),
                                         decoration: InputDecoration(
-                                          hintText: 'Upload image or paste URL to discover visually similar assets...',
+                                          hintText: 'Describe what you are looking for (e.g. kitchen interior, mountain sunset)...',
                                           hintStyle: AppTheme.inter(14, FontWeight.w400, AppTheme.textHint),
                                           border: InputBorder.none,
                                           isDense: true,
@@ -140,14 +126,23 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
                                     Padding(
                                       padding: const EdgeInsets.all(6),
                                       child: ElevatedButton(
-                                        onPressed: () => _doSearch(_ctrl.text),
+                                        onPressed: _searching ? null : () => _doSearch(_ctrl.text),
                                         style: ElevatedButton.styleFrom(
                                           backgroundColor: AppTheme.activeBlue,
                                           shape: const CircleBorder(),
                                           padding: const EdgeInsets.all(12),
                                           elevation: 0,
                                         ),
-                                        child: const Icon(Icons.upload_file, size: 18, color: AppTheme.white),
+                                        child: _searching
+                                            ? const SizedBox(
+                                                width: 18,
+                                                height: 18,
+                                                child: CircularProgressIndicator(
+                                                  strokeWidth: 2,
+                                                  color: AppTheme.white,
+                                                ),
+                                              )
+                                            : const Icon(Icons.search, size: 18, color: AppTheme.white),
                                       ),
                                     ),
                                   ],
@@ -155,14 +150,13 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
                               ),
                             ),
                             const SizedBox(height: 16),
-                            // Suggestion chips
                             Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: ['Architecture', 'Portraits', 'Landscapes'].map((tag) {
                                 return Padding(
                                   padding: const EdgeInsets.symmetric(horizontal: 4),
                                   child: InkWell(
-                                    onTap: () => _doSearch(tag),
+                                    onTap: _searching ? null : () => _doSearch(tag),
                                     borderRadius: BorderRadius.circular(20),
                                     child: Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
@@ -181,14 +175,11 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
                         ),
                       ),
                       const Divider(height: 1, color: AppTheme.border),
-                      // Results + Details
                       Expanded(
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            Expanded(child: _ResultsGrid(results: _results, onSelect: (r) => setState(() => _selected = r))),
-                            if (_selected != null)
-                              AssetDetailsPanel(item: _selected, onClose: () => setState(() => _selected = null)),
+                            const Expanded(child: _EmptyHome()),
                           ],
                         ),
                       ),
@@ -205,6 +196,9 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
 }
 
 class _TopBar extends StatelessWidget {
+  final String? backendMessage;
+  const _TopBar({this.backendMessage});
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -218,6 +212,8 @@ class _TopBar extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text('SimSearch', style: AppTheme.outfit(16, FontWeight.w700, AppTheme.textPrimary)),
+          if (backendMessage != null)
+            Text(backendMessage!, style: AppTheme.inter(12, FontWeight.w400, AppTheme.textSecondary)),
           IconButton(
             icon: Icon(Icons.account_circle_outlined, color: AppTheme.textSecondary, size: 24),
             onPressed: () {},
@@ -228,89 +224,27 @@ class _TopBar extends StatelessWidget {
   }
 }
 
-// Bento grid layout
-class _ResultsGrid extends StatelessWidget {
-  final List<SearchResult> results;
-  final ValueChanged<SearchResult> onSelect;
-  const _ResultsGrid({required this.results, required this.onSelect});
+class _EmptyHome extends StatelessWidget {
+  const _EmptyHome();
 
   @override
   Widget build(BuildContext context) {
     return Container(
       color: AppTheme.bg,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(24, 20, 24, 16),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('Top Results', style: AppTheme.outfit(18, FontWeight.w600, AppTheme.textPrimary)),
-                Text('Showing 24 matches', style: AppTheme.inter(13, FontWeight.w400, AppTheme.textSecondary)),
-              ],
-            ),
-          ),
-          Expanded(
-            child: results.isEmpty
-                ? Center(child: Text('No results yet', style: AppTheme.inter(14, FontWeight.w400, AppTheme.textHint)))
-                : _BentoLayout(results: results, onSelect: onSelect),
-          ),
-        ],
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.image_search_outlined, size: 48, color: AppTheme.textHint),
+            const SizedBox(height: 16),
+            Text('Search to discover similar images',
+                style: AppTheme.outfit(18, FontWeight.w600, AppTheme.textPrimary)),
+            const SizedBox(height: 8),
+            Text('Results from your indexed library will appear here',
+                style: AppTheme.inter(14, FontWeight.w400, AppTheme.textSecondary)),
+          ],
+        ),
       ),
     );
-  }
-}
-
-class _BentoLayout extends StatelessWidget {
-  final List<SearchResult> results;
-  final ValueChanged<SearchResult> onSelect;
-  const _BentoLayout({required this.results, required this.onSelect});
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(builder: (context, constraints) {
-      const gap = 12.0;
-      const cols = 4;
-      final w = constraints.maxWidth;
-      final cellW = (w - 32 * 2 - gap * (cols - 1)) / cols;
-      const cellH = 160.0;
-
-      // Bento positions: item 0 is 2×2
-      return SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-        child: SizedBox(
-          height: cellH * 3 + gap * 2 + 8,
-          child: Stack(children: [
-            if (results.isNotEmpty)
-              Positioned(
-                left: 0, top: 0,
-                width: cellW * 2 + gap, height: cellH * 2 + gap,
-                child: ImageCard(item: results[0], featured: true, onTap: () => onSelect(results[0])),
-              ),
-            // Col 2, row 0
-            if (results.length > 1)
-              Positioned(left: (cellW + gap) * 2, top: 0, width: cellW, height: cellH,
-                  child: ImageCard(item: results[1], onTap: () => onSelect(results[1]))),
-            // Col 3, row 0
-            if (results.length > 2)
-              Positioned(left: (cellW + gap) * 3, top: 0, width: cellW, height: cellH,
-                  child: ImageCard(item: results[2], onTap: () => onSelect(results[2]))),
-            // Col 3, row 1 (tall — 2 rows)
-            if (results.length > 3)
-              Positioned(left: (cellW + gap) * 2, top: cellH + gap, width: cellW * 2 + gap, height: cellH * 2 + gap,
-                  child: ImageCard(item: results[3], onTap: () => onSelect(results[3]))),
-            // Col 0, row 2
-            if (results.length > 4)
-              Positioned(left: 0, top: (cellH + gap) * 2, width: cellW, height: cellH,
-                  child: ImageCard(item: results[4], onTap: () => onSelect(results[4]))),
-            // Col 1, row 2
-            if (results.length > 5)
-              Positioned(left: cellW + gap, top: (cellH + gap) * 2, width: cellW, height: cellH,
-                  child: ImageCard(item: results[5], onTap: () => onSelect(results[5]))),
-          ]),
-        ),
-      );
-    });
   }
 }
