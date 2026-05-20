@@ -7,8 +7,7 @@ import numpy as np
 from PIL import Image
 from scanner import scan_for_photos
 from db import MediaDatabase
-from optimum.intel import OVModelForZeroShotImageClassification
-from transformers import CLIPProcessor
+from transformers import CLIPModel, CLIPProcessor
 
 # -----------------------------
 # CONFIGURATION & PATHS
@@ -16,7 +15,7 @@ from transformers import CLIPProcessor
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PARENT_DIR = os.path.dirname(SCRIPT_DIR)
 
-MODEL_PATH = os.path.join(PARENT_DIR, "clip-vit-base-patch32-ir")
+MODEL_PATH = os.path.join(SCRIPT_DIR, "models", "clip-vit-base-patch32")
 FAISS_DB_DIR = os.path.join(SCRIPT_DIR, "faiss_db")
 CONFIG_PATH = os.path.join(SCRIPT_DIR, "config.json")
 
@@ -64,10 +63,18 @@ def run_indexing():
 
     print(f"Found {len(image_paths)} image(s) to process.")
     
-    print("\nLoading OpenVINO CLIP model (Hardware Accelerated)...")
-    # device_name="AUTO" lets OpenVINO pick the fastest hardware (GPU/CPU/NPU)
-    model = OVModelForZeroShotImageClassification.from_pretrained(MODEL_PATH, device_name="AUTO")
-    processor = CLIPProcessor.from_pretrained(MODEL_PATH)
+    if not os.path.exists(MODEL_PATH):
+        print(f"\nModel not found at {MODEL_PATH}. Downloading from Hugging Face...")
+        model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
+        processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
+        print(f"Saving model locally to {MODEL_PATH}...")
+        os.makedirs(MODEL_PATH, exist_ok=True)
+        model.save_pretrained(MODEL_PATH)
+        processor.save_pretrained(MODEL_PATH)
+    else:
+        print(f"\nLoading CLIP model from local path: {MODEL_PATH}")
+        model = CLIPModel.from_pretrained(MODEL_PATH)
+        processor = CLIPProcessor.from_pretrained(MODEL_PATH)
     
     # Ensure FAISS DB directory exists
     os.makedirs(FAISS_DB_DIR, exist_ok=True)
@@ -80,10 +87,6 @@ def run_indexing():
     embeddings = []
     valid_paths = []
     
-    # OpenVINO model requires text input placeholders even when only running image forward pass
-    dummy_text = torch.zeros((1, 1), dtype=torch.long)
-    dummy_mask = torch.ones((1, 1), dtype=torch.long)
-
     print(f"\nStarting indexing of {len(image_paths)} images...")
     indexed_count = 0
     for idx, path in enumerate(image_paths):
@@ -92,9 +95,9 @@ def run_indexing():
             inputs = processor(images=image, return_tensors="pt")
             
             with torch.no_grad():
-                outputs = model(input_ids=dummy_text, pixel_values=inputs['pixel_values'], attention_mask=dummy_mask)
+                image_embeds = model.get_image_features(pixel_values=inputs['pixel_values'])
             
-            vector = outputs.image_embeds.cpu().numpy().astype("float32")
+            vector = image_embeds.cpu().numpy().astype("float32")
             vector /= np.linalg.norm(vector, axis=1, keepdims=True)
             
             # Store in SQL (row_id must match FAISS index ID)

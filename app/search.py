@@ -4,8 +4,7 @@ import faiss
 import torch
 import numpy as np
 from db import MediaDatabase
-from optimum.intel import OVModelForZeroShotImageClassification
-from transformers import CLIPProcessor
+from transformers import CLIPModel, CLIPProcessor
 
 # -----------------------------
 # CONFIGURATION & PATHS
@@ -13,7 +12,7 @@ from transformers import CLIPProcessor
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PARENT_DIR = os.path.dirname(SCRIPT_DIR)
 
-MODEL_PATH = os.path.join(PARENT_DIR, "clip-vit-base-patch32-ir")
+MODEL_PATH = os.path.join(SCRIPT_DIR, "models", "clip-vit-base-patch32")
 FAISS_DB_DIR = os.path.join(SCRIPT_DIR, "faiss_db")
 
 INDEX_FILE = os.path.join(FAISS_DB_DIR, "index.faiss")
@@ -21,20 +20,16 @@ SQL_DB_FILE = os.path.join(FAISS_DB_DIR, "localmind.db")
 
 def perform_search(query, index, model, processor, db, top_k=5):
     """Executes a search query and returns the matching paths and confidence scores."""
-    # Joint model requires a dummy image placeholder for text encoding
-    dummy_image = torch.zeros((1, 3, 224, 224))
-    
     # Process text query
     inputs = processor(text=[query], return_tensors="pt", padding=True)
     with torch.no_grad():
-        outputs = model(
+        text_embeds = model.get_text_features(
             input_ids=inputs['input_ids'], 
-            pixel_values=dummy_image, 
             attention_mask=inputs['attention_mask']
         )
     
     # Extract and normalize the query vector
-    query_vector = outputs.text_embeds.cpu().numpy().astype("float32")
+    query_vector = text_embeds.cpu().numpy().astype("float32")
     query_vector /= np.linalg.norm(query_vector, axis=1, keepdims=True)
 
     # Search FAISS index
@@ -63,9 +58,18 @@ def main():
         print(f"Please run the indexing script first:\n  python index.py")
         sys.exit(1)
 
-    print("Loading OpenVINO CLIP model (Hardware Accelerated)...")
-    model = OVModelForZeroShotImageClassification.from_pretrained(MODEL_PATH, device_name="AUTO")
-    processor = CLIPProcessor.from_pretrained(MODEL_PATH)
+    if not os.path.exists(MODEL_PATH):
+        print(f"Model not found at {MODEL_PATH}. Downloading from Hugging Face...")
+        model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
+        processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
+        print(f"Saving model locally to {MODEL_PATH}...")
+        os.makedirs(MODEL_PATH, exist_ok=True)
+        model.save_pretrained(MODEL_PATH)
+        processor.save_pretrained(MODEL_PATH)
+    else:
+        print(f"Loading CLIP model from local path: {MODEL_PATH}")
+        model = CLIPModel.from_pretrained(MODEL_PATH)
+        processor = CLIPProcessor.from_pretrained(MODEL_PATH)
 
     print("Loading FAISS index & SQL database...")
     index = faiss.read_index(INDEX_FILE)
