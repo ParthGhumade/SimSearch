@@ -41,7 +41,7 @@ def scan_for_photos(folder_path: str) -> List[str]:
 
 if __name__ == "__main__":
     # Example usage:
-    test_path = r"s:\Coding\Projects\Project LocalMind\SimSearch\test_media"
+    test_path = r"s:\\Coding\\Projects\\Project_LocalMind\\SimSearch\\test_media"
     photos = scan_for_photos(test_path)
     print(photos)
     print(f"Found {len(photos)} photos.")

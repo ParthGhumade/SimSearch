@@ -1,5 +1,6 @@
 import os
 import sys
+import json
 import faiss
 import torch
 import numpy as np
@@ -14,11 +15,12 @@ PARENT_DIR = os.path.dirname(SCRIPT_DIR)
 
 MODEL_PATH = os.path.join(SCRIPT_DIR, "models", "clip-vit-base-patch32")
 FAISS_DB_DIR = os.path.join(SCRIPT_DIR, "faiss_db")
+SQL_DB_DIR = os.path.join(SCRIPT_DIR, "sql_db")
 
 INDEX_FILE = os.path.join(FAISS_DB_DIR, "index.faiss")
-SQL_DB_FILE = os.path.join(FAISS_DB_DIR, "localmind.db")
+SQL_DB_FILE = os.path.join(SQL_DB_DIR, "localmind.db")
 
-def perform_search(query, index, model, processor, db, top_k=5):
+def perform_search(query, index, model, processor, db, top_k=None):
     """Executes a search query and returns the matching paths and confidence scores."""
     # Process text query
     inputs = processor(text=[query], return_tensors="pt", padding=True)
@@ -33,6 +35,11 @@ def perform_search(query, index, model, processor, db, top_k=5):
     query_vector /= np.linalg.norm(query_vector, axis=1, keepdims=True)
 
     # Search FAISS index
+    if top_k is None:
+        # Calculate 20% of total indexed photos (minimum of 1)
+        top_k = max(1, int(np.ceil(index.ntotal * 0.20)))
+        print(f"  [INFO] Returning top 20% of photos ({top_k} out of {index.ntotal})")
+
     k = min(top_k, index.ntotal)
     if k == 0:
         return []
@@ -86,9 +93,9 @@ def main():
             if not results:
                 print("No results found.")
             else:
+                results_dict = {f"{confidence:.4f}": path for path, confidence in results}
                 print("\nResults:")
-                for rank, (path, confidence) in enumerate(results):
-                    print(f"  {rank+1}. [Confidence: {confidence:.4f}] {path}")
+                print(json.dumps(results_dict, indent=4))
         except Exception as e:
             print(f"Search failed: {e}")
             sys.exit(1)
@@ -108,9 +115,9 @@ def main():
                 if not results:
                     print("No results found.")
                 else:
+                    results_dict = {f"{confidence:.4f}": path for path, confidence in results}
                     print("\nResults:")
-                    for rank, (path, confidence) in enumerate(results):
-                        print(f"  {rank+1}. [Confidence: {confidence:.4f}] {path}")
+                    print(json.dumps(results_dict, indent=4))
             except KeyboardInterrupt:
                 print("\nExiting search.")
                 break

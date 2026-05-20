@@ -12,15 +12,17 @@ from transformers import CLIPModel, CLIPProcessor
 # -----------------------------
 # CONFIGURATION & PATHS
 # -----------------------------
+
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PARENT_DIR = os.path.dirname(SCRIPT_DIR)
 
 MODEL_PATH = os.path.join(SCRIPT_DIR, "models", "clip-vit-base-patch32")
 FAISS_DB_DIR = os.path.join(SCRIPT_DIR, "faiss_db")
+SQL_DB_DIR = os.path.join(SCRIPT_DIR, "sql_db")
 CONFIG_PATH = os.path.join(SCRIPT_DIR, "config.json")
 
 INDEX_FILE = os.path.join(FAISS_DB_DIR, "index.faiss")
-SQL_DB_FILE = os.path.join(FAISS_DB_DIR, "localmind.db")
+SQL_DB_FILE = os.path.join(SQL_DB_DIR, "localmind.db")
 
 # -----------------------------
 # UTILS
@@ -76,8 +78,9 @@ def run_indexing():
         model = CLIPModel.from_pretrained(MODEL_PATH)
         processor = CLIPProcessor.from_pretrained(MODEL_PATH)
     
-    # Ensure FAISS DB directory exists
+    # Ensure DB directories exist
     os.makedirs(FAISS_DB_DIR, exist_ok=True)
+    os.makedirs(SQL_DB_DIR, exist_ok=True)
     db = MediaDatabase(SQL_DB_FILE)
     
     # Clear database first to start fresh and ensure alignment with FAISS row IDs
