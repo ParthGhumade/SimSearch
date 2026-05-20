@@ -1,5 +1,5 @@
 import os
-from optimum.intel import OVModelForZeroShotImageClassification
+from optimum.intel.openvino.modeling import OVModelForZeroShotImageClassification
 from transformers import AutoProcessor, pipeline
 import openvino as ov
 from PIL import Image

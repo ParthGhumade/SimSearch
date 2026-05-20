@@ -2,7 +2,7 @@ import os
 from PIL import Image
 import requests
 from transformers import CLIPProcessor
-from optimum.intel import OVModelForVisualQuestionAnswering # Adjusting based on user's import if needed, or CLIP
+from optimum.intel.openvino.modeling import OVModelForZeroShotImageClassification
 # Note: User's code used a custom pipeline setup. I'll generalize it here.
 
 class SearchEngine:
